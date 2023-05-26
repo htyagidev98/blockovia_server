@@ -12,33 +12,34 @@ cloudinary.config({
 
 exports.featureContentAdd = async (req, res, images) => {
     try {
-    const rules = { title: "required" };
-    var validation = new Validator(req.body, rules)
-    if (validation.fails()) {
-        return res.status(422).json({ responseMessage: "Validation Error", responseData: validation.errors.all(), });
-    } else {
-        const { title } = req.body;
-        const featureData = await Feature.findOne({ title: title }).lean();
-        if (featureData) {
-            let logoData = [];
-            let result = await cloudinary.uploader.upload(req.file.path, {
-                images,
-                overwrite: true,
-                faces: false,
-            });
-            logoData.push({
-                image_url: result.secure_url,
-                image_id: result.public_id,
-            });
-            let data = await Feature.create({
-                title: title,
-                logoData: logoData
-            });
-            return res.status(200).json({ responseMessage: "Successfully", responseData: { data }, });
+        const rules = { title: "required" };
+        var validation = new Validator(req.body, rules)
+        if (validation.fails()) {
+            return res.status(422).json({ responseMessage: "Validation Error", responseData: validation.errors.all(), });
         } else {
-            return res.status(403).json({ responseMessage: "Feature Not Exist", responseData: {} });
+            const { title } = req.body;
+            const featureData = await Feature.findOne({ title: title }).lean();
+            if (!featureData) {
+                let logoData = [];
+                let result = await cloudinary.uploader.upload(req.file.path, {
+                    images,
+                    overwrite: true,
+                    faces: false,
+                });
+                logoData.push({
+                    image_url: result.secure_url,
+                    image_id: result.public_id,
+                    image_name: result.original_filename
+                });
+                let data = await Feature.create({
+                    title: title,
+                    logoData: logoData
+                });
+                return res.status(200).json({ responseMessage: "Successfully", responseData: { data }, });
+            } else {
+                return res.status(403).json({ responseMessage: "Data  Exist", responseData: {} });
+            }
         }
-    }
     } catch (err) {
         return res.status(500).json({ responseMessage: " Internal Sever Error", responseData: {} })
     }
@@ -47,14 +48,27 @@ exports.featureContentAdd = async (req, res, images) => {
 exports.featureContentGet = async (req, res) => {
     try {
         const contentlist = await Feature.findOne().sort({ createdAt: -1 });
+        console.log("data", contentlist.logoData)
         if (contentlist) {
-            const contentObj = {
-                _id: contentlist._id,
-                title: contentlist.title,
-                image_url: contentlist.logoData[0].image_url,
-                image_id: contentlist.logoData[0].image_id
-            };
-            return res.status(200).json({ responseMessage: "Successfully", responseData: { contentObj } });
+            let image_data = contentlist.logoData;
+            if (image_data.length > 0) {
+                let ImagesData = []
+                image_data.forEach(image => {
+                    const imageObj = {
+                        image_id: image.image_id,
+                        image_name: image.image_name,
+                        image_url: image.image_url
+                    }
+                    ImagesData.push(imageObj);
+                });
+                const contentObj = {
+                    _id: contentlist._id,
+                    title: contentlist.title,
+                    ImagesData: ImagesData
+                };
+                return res.status(200).json({ responseMessage: "Successfully", responseData: contentObj });
+            }
+
         } else {
             return res.status(404).json({ responseMessage: "No Data found", responseData: {} })
         };
@@ -62,6 +76,7 @@ exports.featureContentGet = async (req, res) => {
         return res.status(500).json({ responseMessage: " Internal Sever Error", responseData: {} })
     }
 };
+
 
 exports.featureContentUpdate = async (req, res, images) => {
     try {
@@ -75,7 +90,9 @@ exports.featureContentUpdate = async (req, res, images) => {
         logoData.push({
             image_url: result.secure_url,
             image_id: result.public_id,
+            image_name:result.original_filename
         });
+
         let data = await Feature.findOneAndUpdate(
             { title: title },
             { $push: { logoData: logoData } },
